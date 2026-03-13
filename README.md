@@ -72,6 +72,27 @@ Build image:
 docker build -t lecture17-kucoin-rl .
 ```
 
+One-command live (PowerShell):
+
+```powershell
+.\scripts\bot.ps1 -Action docker-live-up
+```
+
+The script auto-removes old `near-rl-live` container name conflicts before start.
+
+One-command live (bash):
+
+```bash
+./scripts/bot.sh docker-live-up
+```
+
+One-command logs/stop:
+
+```powershell
+.\scripts\bot.ps1 -Action docker-live-logs
+.\scripts\bot.ps1 -Action docker-live-down
+```
+
 Run train:
 
 ```powershell
@@ -211,3 +232,8 @@ git push -u origin main
 - `live`
 - `test`
 - `notebook`
+- `docker-build`
+- `docker-shadow-once`
+- `docker-live-up`
+- `docker-live-logs`
+- `docker-live-down`

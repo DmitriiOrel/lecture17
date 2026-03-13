@@ -1,0 +1,45 @@
+services:
+  near-rl-live:
+    build:
+      context: .
+    image: lecture17-kucoin-rl:latest
+    container_name: near-rl-live
+    restart: unless-stopped
+    command:
+      - python
+      - run_trade_signal.py
+      - --mode
+      - live
+      - --run-real-order
+      - --config
+      - config/micro_near_v1_1m.json
+      - --model-path
+      - models/near_basis_qlearning.json
+      - --env-file
+      - .runtime/kucoin.env
+    volumes:
+      - ./models:/app/models
+      - ./.runtime:/app/.runtime
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+
+  near-rl-shadow-once:
+    image: lecture17-kucoin-rl:latest
+    profiles: ["manual"]
+    command:
+      - python
+      - run_trade_signal.py
+      - --mode
+      - shadow
+      - --once
+      - --config
+      - config/micro_near_v1_1m.json
+      - --model-path
+      - models/near_basis_qlearning.json
+      - --env-file
+      - .runtime/kucoin.env
+    volumes:
+      - ./models:/app/models
+      - ./.runtime:/app/.runtime
+      - ./reports:/app/reports
+      - ./logs:/app/logs

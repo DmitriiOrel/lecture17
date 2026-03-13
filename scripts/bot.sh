@@ -42,6 +42,28 @@ ensure_venv_python() {
   fi
 }
 
+ensure_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker CLI not found in PATH. Install Docker Desktop." >&2
+    exit 2
+  fi
+}
+
+run_compose() {
+  echo "> docker compose $*"
+  (cd "$PROJECT_DIR" && docker compose "$@")
+}
+
+remove_container_if_exists() {
+  local name="$1"
+  local existing
+  existing="$(docker ps -a --filter "name=^${name}$" --format '{{.ID}}')"
+  if [[ -n "$existing" ]]; then
+    echo "> docker rm -f $name"
+    docker rm -f "$name" >/dev/null
+  fi
+}
+
 case "$ACTION" in
   install)
     if [[ ! -x "$VENV_PYTHON" ]]; then
@@ -92,9 +114,32 @@ case "$ACTION" in
     ensure_venv_python
     run_checked "$VENV_PYTHON" -m jupyter lab "${PROJECT_DIR}/notebooks/lecture16_basis_rl_colab.ipynb"
     ;;
+  docker-build)
+    ensure_docker
+    (cd "$PROJECT_DIR" && run_checked docker build -t lecture17-kucoin-rl .)
+    ;;
+  docker-shadow-once)
+    ensure_docker
+    mkdir -p "${PROJECT_DIR}/.runtime" "${PROJECT_DIR}/models" "${PROJECT_DIR}/reports" "${PROJECT_DIR}/logs"
+    run_compose run --rm near-rl-shadow-once
+    ;;
+  docker-live-up)
+    ensure_docker
+    mkdir -p "${PROJECT_DIR}/.runtime" "${PROJECT_DIR}/models" "${PROJECT_DIR}/reports" "${PROJECT_DIR}/logs"
+    remove_container_if_exists "near-rl-live"
+    run_compose up -d --build near-rl-live
+    ;;
+  docker-live-logs)
+    ensure_docker
+    run_compose logs -f --tail 100 near-rl-live
+    ;;
+  docker-live-down)
+    ensure_docker
+    run_compose down
+    ;;
   *)
     echo "Unknown action: $ACTION" >&2
-    echo "Supported: install, env-template, train-fast, train, shadow-once, shadow, live, test, notebook" >&2
+    echo "Supported: install, env-template, train-fast, train, shadow-once, shadow, live, test, notebook, docker-build, docker-shadow-once, docker-live-up, docker-live-logs, docker-live-down" >&2
     exit 2
     ;;
 esac

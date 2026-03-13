@@ -8,3 +8,4 @@ logs/
 .vendor/
 reports/
 models/
+.docker-local/

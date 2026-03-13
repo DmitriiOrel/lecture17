@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("install", "env-template", "train-fast", "train", "shadow-once", "shadow", "live", "test", "notebook")]
+    [ValidateSet("install", "env-template", "train-fast", "train", "shadow-once", "shadow", "live", "test", "notebook", "docker-build", "docker-shadow-once", "docker-live-up", "docker-live-logs", "docker-live-down")]
     [string]$Action = "shadow-once",
     [string]$Config = "config/micro_near_v1_1m.json",
     [string]$ModelPath = "models/near_basis_qlearning.json",
@@ -37,6 +37,42 @@ function Invoke-Checked {
 function Ensure-VenvPython {
     if (-not (Test-Path $VenvPython)) {
         throw "venv python not found: $VenvPython. Run: .\scripts\bot.ps1 -Action install"
+    }
+}
+
+function Ensure-Docker {
+    if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) {
+        throw "docker CLI not found in PATH. Install Docker Desktop."
+    }
+}
+
+function Invoke-DockerCompose {
+    param(
+        [string[]]$ArgList
+    )
+    Push-Location $ProjectDir
+    try {
+        Write-Host "> docker compose $($ArgList -join ' ')"
+        & docker compose @ArgList
+        if ($LASTEXITCODE -ne 0) {
+            throw "Command failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Remove-DockerContainerIfExists {
+    param(
+        [string]$Name
+    )
+    $existing = (& docker ps -a --filter "name=^${Name}$" --format "{{.ID}}").Trim()
+    if ($existing) {
+        Write-Host "> docker rm -f $Name"
+        & docker rm -f $Name | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to remove existing container: $Name"
+        }
     }
 }
 
@@ -114,5 +150,33 @@ switch ($Action) {
     "notebook" {
         Ensure-VenvPython
         Invoke-Checked -Exe $VenvPython -ArgList @("-m", "jupyter", "lab", "notebooks/lecture16_basis_rl_colab.ipynb")
+    }
+    "docker-build" {
+        Ensure-Docker
+        Push-Location $ProjectDir
+        try {
+            Invoke-Checked -Exe "docker" -ArgList @("build", "-t", "lecture17-kucoin-rl", ".")
+        } finally {
+            Pop-Location
+        }
+    }
+    "docker-shadow-once" {
+        Ensure-Docker
+        New-Item -ItemType Directory -Path (Join-Path $ProjectDir ".runtime"), (Join-Path $ProjectDir "models"), (Join-Path $ProjectDir "reports"), (Join-Path $ProjectDir "logs") -Force | Out-Null
+        Invoke-DockerCompose -ArgList @("run", "--rm", "near-rl-shadow-once")
+    }
+    "docker-live-up" {
+        Ensure-Docker
+        New-Item -ItemType Directory -Path (Join-Path $ProjectDir ".runtime"), (Join-Path $ProjectDir "models"), (Join-Path $ProjectDir "reports"), (Join-Path $ProjectDir "logs") -Force | Out-Null
+        Remove-DockerContainerIfExists -Name "near-rl-live"
+        Invoke-DockerCompose -ArgList @("up", "-d", "--build", "near-rl-live")
+    }
+    "docker-live-logs" {
+        Ensure-Docker
+        Invoke-DockerCompose -ArgList @("logs", "-f", "--tail", "100", "near-rl-live")
+    }
+    "docker-live-down" {
+        Ensure-Docker
+        Invoke-DockerCompose -ArgList @("down")
     }
 }
