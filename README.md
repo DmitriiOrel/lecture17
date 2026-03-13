@@ -64,6 +64,44 @@ chmod +x scripts/bot.sh
 ./scripts/bot.sh shadow-once
 ```
 
+## Docker
+
+Build image:
+
+```bash
+docker build -t lecture17-kucoin-rl .
+```
+
+Run train:
+
+```powershell
+docker run --rm -it -v ${PWD}/models:/app/models -v ${PWD}/reports:/app/reports -v ${PWD}/.runtime:/app/.runtime lecture17-kucoin-rl python run_trade_signal.py --mode train --config config/micro_near_v1_1m.json --model-path models/near_basis_qlearning.json --features-out reports/near_basis_features.csv --env-file .runtime/kucoin.env
+```
+
+Run shadow once:
+
+```powershell
+docker run --rm -it -v ${PWD}/models:/app/models -v ${PWD}/.runtime:/app/.runtime lecture17-kucoin-rl python run_trade_signal.py --mode shadow --once --config config/micro_near_v1_1m.json --model-path models/near_basis_qlearning.json --env-file .runtime/kucoin.env
+```
+
+Run continuous live:
+
+```powershell
+docker run -d --name near-rl-live --restart unless-stopped -v ${PWD}/models:/app/models -v ${PWD}/.runtime:/app/.runtime lecture17-kucoin-rl python run_trade_signal.py --mode live --run-real-order --config config/micro_near_v1_1m.json --model-path models/near_basis_qlearning.json --env-file .runtime/kucoin.env
+```
+
+Live logs:
+
+```bash
+docker logs -f near-rl-live
+```
+
+Stop live container:
+
+```bash
+docker rm -f near-rl-live
+```
+
 ## 2) API credentials
 
 Create local file `.runtime/kucoin.env` (ignored by git):
