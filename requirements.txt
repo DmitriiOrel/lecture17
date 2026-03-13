@@ -6,5 +6,6 @@ jupyter>=1.0
 ipykernel>=6.29
 pytest>=8.0
 setuptools<81
+gymnasium>=0.29
 kucoin-python>=1.0.26
 kucoin-futures-python>=1.0.12

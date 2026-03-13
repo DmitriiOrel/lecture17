@@ -43,6 +43,25 @@ python -m pip install -r requirements.txt
 chmod +x run_kucoin_trade_signal.sh
 ```
 
+All-in-one scripts package:
+
+Windows PowerShell:
+```powershell
+.\scripts\bot.ps1 -Action install
+.\scripts\bot.ps1 -Action env-template
+.\scripts\bot.ps1 -Action train-fast
+.\scripts\bot.ps1 -Action shadow-once
+```
+
+macOS/Linux:
+```bash
+chmod +x scripts/bot.sh
+./scripts/bot.sh install
+./scripts/bot.sh env-template
+./scripts/bot.sh train-fast
+./scripts/bot.sh shadow-once
+```
+
 ## 2) API credentials
 
 Create local file `.runtime/kucoin.env` (ignored by git):
@@ -117,6 +136,8 @@ Notebook shows:
   check firewall/network access to `api.kucoin.com` and `api-futures.kucoin.com`.
 - `pkg_resources` / `NameError` from `kucoin-python`:
   run `python -m pip install "setuptools<81"` and retry.
+- `ModuleNotFoundError: gymnasium / gym`:
+  run `python -m pip install -r requirements.txt` again (the package list includes `gymnasium`).
 
 ## 8) Security
 
@@ -134,3 +155,16 @@ git branch -M main
 git remote add origin https://github.com/<your_user>/<your_repo>.git
 git push -u origin main
 ```
+
+## 10) Scripts package actions
+
+`scripts/bot.ps1` and `scripts/bot.sh` support:
+- `install`
+- `env-template`
+- `train-fast`
+- `train`
+- `shadow-once`
+- `shadow`
+- `live`
+- `test`
+- `notebook`

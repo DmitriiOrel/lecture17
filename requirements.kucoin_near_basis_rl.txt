@@ -2,5 +2,6 @@ numpy>=1.26
 pandas>=2.2
 requests>=2.31
 setuptools<81
+gymnasium>=0.29
 kucoin-python>=1.0.26
 kucoin-futures-python>=1.0.12
