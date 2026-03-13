@@ -67,6 +67,7 @@ class ExecutionConfig:
     leverage: int = 2
     poll_seconds: int = 60
     default_paper_mode: bool = True
+    allow_spot_short: bool = False
 
 
 @dataclass

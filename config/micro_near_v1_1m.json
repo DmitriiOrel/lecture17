@@ -46,6 +46,7 @@
     "risk_penalty": 0.0002,
     "leverage": 2,
     "poll_seconds": 60,
-    "default_paper_mode": true
+    "default_paper_mode": true,
+    "allow_spot_short": false
   }
 }

@@ -16,6 +16,7 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Console]::OutputEncoding
 $env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUNBUFFERED = "1"
 
 $ProjectDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Runner = Join-Path $ProjectDir "run_trade_signal.py"

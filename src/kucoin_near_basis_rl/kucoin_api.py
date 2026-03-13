@@ -4,6 +4,7 @@ import inspect
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_DOWN
 from typing import Any
 
 import pandas as pd
@@ -223,13 +224,35 @@ class KuCoinExecutionClient:
     def __init__(self, api_cfg: ApiConfig, dry_run: bool = True) -> None:
         self.api_cfg = api_cfg
         self.dry_run = dry_run
+        self._spot_market = None
         self._spot_trade = None
         self._futures_trade = None
+        self._futures_margin_mode_cache: dict[str, str] = {}
+        self._spot_size_rules_cache: dict[str, tuple[Decimal, Decimal]] = {}
         if not self.dry_run:
             self._init_sdk_clients()
 
+    def get_futures_position_direction(self, symbol: str) -> int:
+        if self.dry_run:
+            return 0
+        getter = getattr(self._futures_trade, "get_position_details", None)
+        if getter is None:
+            return 0
+        try:
+            payload = getter(symbol)
+        except Exception:
+            return 0
+
+        quantity = self._extract_signed_quantity(payload)
+        if quantity > 0:
+            return 1
+        if quantity < 0:
+            return -1
+        return 0
+
     def _init_sdk_clients(self) -> None:
         try:
+            from kucoin.client import Market as SpotMarketClient  # type: ignore
             from kucoin.client import Trade as SpotTradeClient  # type: ignore
             from kucoin_futures.client import Trade as FuturesTradeClient  # type: ignore
         except Exception as exc:
@@ -284,6 +307,7 @@ class KuCoinExecutionClient:
             else self.api_cfg.futures_base_url,
         }
 
+        self._spot_market = self._construct_with_supported_kwargs(SpotMarketClient, **spot_candidates)
         self._spot_trade = self._construct_with_supported_kwargs(SpotTradeClient, **spot_candidates)
         self._futures_trade = self._construct_with_supported_kwargs(
             FuturesTradeClient, **futures_candidates
@@ -370,26 +394,138 @@ class KuCoinExecutionClient:
                 },
             ]
 
+        futures_order_kwargs: dict[str, Any] = {
+            "size": futures_size,
+            "lever": leverage,
+            "leverage": leverage,
+            "reduceOnly": reduce_only,
+            "reduce_only": reduce_only,
+        }
+        margin_mode = self._resolve_futures_margin_mode(futures_symbol)
+        if margin_mode:
+            futures_order_kwargs["marginMode"] = margin_mode
+            futures_order_kwargs["margin_mode"] = margin_mode
+
         futures_result = self._call_with_supported_kwargs(
             self._futures_trade.create_market_order,
             futures_symbol,
             futures_side,
-            size=futures_size,
-            lever=leverage,
-            leverage=leverage,
-            reduceOnly=reduce_only,
-            reduce_only=reduce_only,
+            **futures_order_kwargs,
         )
+        spot_order_size = self._format_spot_order_size(spot_symbol, spot_size)
         spot_result = self._call_with_supported_kwargs(
             self._spot_trade.create_market_order,
             spot_symbol,
             spot_side,
-            size=str(spot_size),
+            size=spot_order_size,
         )
         return [
             {"market": "futures", "result": futures_result},
             {"market": "spot", "result": spot_result},
         ]
+
+    def _resolve_futures_margin_mode(self, symbol: str) -> str | None:
+        if symbol in self._futures_margin_mode_cache:
+            return self._futures_margin_mode_cache[symbol]
+        getter = getattr(self._futures_trade, "get_margin_mode", None)
+        if getter is None:
+            return None
+        try:
+            payload = getter(symbol)
+        except Exception:
+            return None
+
+        mode = self._extract_margin_mode(payload)
+        if mode is None:
+            return None
+        self._futures_margin_mode_cache[symbol] = mode
+        return mode
+
+    @staticmethod
+    def _extract_margin_mode(payload: Any) -> str | None:
+        values = [payload]
+        if isinstance(payload, dict) and "data" in payload:
+            values.append(payload["data"])
+
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            for key in ("marginMode", "margin_mode", "marginType", "margin_type"):
+                raw = value.get(key)
+                if isinstance(raw, str):
+                    normalized = raw.strip().upper()
+                    if normalized in {"ISOLATED", "CROSS"}:
+                        return normalized
+        return None
+
+    def _format_spot_order_size(self, symbol: str, spot_size: float) -> str:
+        raw = Decimal(str(max(spot_size, 0.0)))
+        if raw <= 0:
+            raise ValueError("spot_size must be positive")
+
+        rules = self._resolve_spot_size_rules(symbol)
+        if rules is not None:
+            base_increment, min_size = rules
+            scaled = (raw / base_increment).quantize(Decimal("1"), rounding=ROUND_DOWN)
+            normalized = scaled * base_increment
+            if normalized < min_size:
+                raise RuntimeError(
+                    f"Spot size {normalized} for {symbol} is below min size {min_size}. "
+                    "Increase quote_notional_usdt in config."
+                )
+            return self._decimal_to_string(normalized)
+
+        # Fallback for SDK/network edge cases: keep deterministic precision instead of raw float noise.
+        return self._decimal_to_string(raw.quantize(Decimal("0.001"), rounding=ROUND_DOWN))
+
+    def _resolve_spot_size_rules(self, symbol: str) -> tuple[Decimal, Decimal] | None:
+        if symbol in self._spot_size_rules_cache:
+            return self._spot_size_rules_cache[symbol]
+        getter = getattr(self._spot_market, "get_symbol_detail", None)
+        if getter is None:
+            return None
+        try:
+            payload = getter(symbol)
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        try:
+            base_increment = Decimal(str(payload["baseIncrement"]))
+            min_size = Decimal(str(payload["baseMinSize"]))
+        except Exception:
+            return None
+        if base_increment <= 0 or min_size < 0:
+            return None
+
+        rules = (base_increment, min_size)
+        self._spot_size_rules_cache[symbol] = rules
+        return rules
+
+    @staticmethod
+    def _decimal_to_string(value: Decimal) -> str:
+        normalized = value.normalize()
+        text = format(normalized, "f")
+        return text.rstrip("0").rstrip(".") if "." in text else text
+
+    @staticmethod
+    def _extract_signed_quantity(payload: Any) -> float:
+        candidates: list[Any] = [payload]
+        if isinstance(payload, dict) and "data" in payload:
+            candidates.append(payload["data"])
+
+        qty_keys = ("currentQty", "current_qty", "quantity", "qty", "positionQty", "position_qty")
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            for key in qty_keys:
+                raw = candidate.get(key)
+                try:
+                    return float(raw)
+                except Exception:
+                    continue
+        return 0.0
 
     @staticmethod
     def _call_with_supported_kwargs(method: Any, *args: Any, **kwargs: Any) -> Any:
