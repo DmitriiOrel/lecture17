@@ -9,6 +9,7 @@ from kucoin_near_basis_rl.baseline import BaselinePolicy
 from kucoin_near_basis_rl.config import FeatureConfig
 from kucoin_near_basis_rl.env import BasisTradingEnv
 from kucoin_near_basis_rl.features import FEATURE_COLUMNS, build_feature_frame
+from kucoin_near_basis_rl.kucoin_api import KuCoinExecutionClient
 from kucoin_near_basis_rl.qlearning import (
     QLearningAgent,
     StateDiscretizer,
@@ -82,3 +83,43 @@ def test_qlearning_training_runs() -> None:
     )
     assert len(rewards) == 5
     assert len(agent.q_table) > 0
+
+
+def test_construct_with_supported_kwargs_handles_sdk_signature_variants() -> None:
+    class OldStyleClient:
+        def __init__(self, key: str, secret: str, passphrase: str) -> None:
+            self.key = key
+            self.secret = secret
+            self.passphrase = passphrase
+
+    class NewStyleClient:
+        def __init__(
+            self,
+            key: str,
+            secret: str,
+            passphrase: str,
+            is_sandbox: bool = False,
+            url: str | None = None,
+        ) -> None:
+            self.key = key
+            self.secret = secret
+            self.passphrase = passphrase
+            self.is_sandbox = is_sandbox
+            self.url = url
+
+    kwargs = {
+        "key": "k",
+        "secret": "s",
+        "passphrase": "p",
+        "is_sandbox": True,
+        "url": "https://example.com",
+        "unexpected": "ignored",
+    }
+    old = KuCoinExecutionClient._construct_with_supported_kwargs(OldStyleClient, **kwargs)
+    new = KuCoinExecutionClient._construct_with_supported_kwargs(NewStyleClient, **kwargs)
+
+    assert old.key == "k"
+    assert old.secret == "s"
+    assert old.passphrase == "p"
+    assert new.is_sandbox is True
+    assert new.url == "https://example.com"

@@ -251,17 +251,42 @@ class KuCoinExecutionClient:
                 f"{self.api_cfg.api_key_env}, {self.api_cfg.api_secret_env}, {self.api_cfg.api_passphrase_env}"
             )
 
-        self._spot_trade = SpotTradeClient(
-            key=api_key,
-            secret=api_secret,
-            passphrase=passphrase,
-            is_sandbox=self.api_cfg.is_sandbox,
-        )
-        self._futures_trade = FuturesTradeClient(
-            key=api_key,
-            secret=api_secret,
-            passphrase=passphrase,
-            is_sandbox=self.api_cfg.is_sandbox,
+        auth_candidates = {
+            "key": api_key,
+            "secret": api_secret,
+            "passphrase": passphrase,
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "api_passphrase": passphrase,
+            "password": passphrase,
+        }
+
+        spot_candidates = {
+            **auth_candidates,
+            "is_sandbox": self.api_cfg.is_sandbox,
+            "sandbox": self.api_cfg.is_sandbox,
+            "url": "https://openapi-sandbox.kucoin.com"
+            if self.api_cfg.is_sandbox
+            else self.api_cfg.spot_base_url,
+            "base_url": "https://openapi-sandbox.kucoin.com"
+            if self.api_cfg.is_sandbox
+            else self.api_cfg.spot_base_url,
+        }
+        futures_candidates = {
+            **auth_candidates,
+            "is_sandbox": self.api_cfg.is_sandbox,
+            "sandbox": self.api_cfg.is_sandbox,
+            "url": "https://api-sandbox-futures.kucoin.com"
+            if self.api_cfg.is_sandbox
+            else self.api_cfg.futures_base_url,
+            "base_url": "https://api-sandbox-futures.kucoin.com"
+            if self.api_cfg.is_sandbox
+            else self.api_cfg.futures_base_url,
+        }
+
+        self._spot_trade = self._construct_with_supported_kwargs(SpotTradeClient, **spot_candidates)
+        self._futures_trade = self._construct_with_supported_kwargs(
+            FuturesTradeClient, **futures_candidates
         )
 
     def rebalance_basis_position(
@@ -372,3 +397,11 @@ class KuCoinExecutionClient:
             return method(*args, **kwargs)
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in signature.parameters}
         return method(*args, **filtered_kwargs)
+
+    @staticmethod
+    def _construct_with_supported_kwargs(factory: Any, **kwargs: Any) -> Any:
+        signature = inspect.signature(factory)
+        if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+            return factory(**kwargs)
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k in signature.parameters}
+        return factory(**filtered_kwargs)
